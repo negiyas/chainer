@@ -1,0 +1,7 @@
+
+DATE=`date +%Y%m%d`
+
+ARCH=googlenet
+
+OOC=0 SYNTH=1 ARCH=${ARCH} LOG=LOG${DATE}-OOC-ORG INSIZE=2240 BATCHSIZE="1 2 3 4 5 6 7 8 9 10" ./go-parallel.sh
+OOC=1 SYNTH=1 ARCH=${ARCH} LOG=LOG${DATE}-OOC-OOC INSIZE=2240 BATCHSIZE="1 2 3 4 5 6 7 8 9 10" ./go-parallel.sh
