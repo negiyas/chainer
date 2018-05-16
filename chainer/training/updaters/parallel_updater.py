@@ -84,6 +84,10 @@ class ParallelUpdater(standard_updater.StandardUpdater):
         self._devices = devices
         self._models = models
 
+    @property
+    def device_list(self):
+        return self._devices.values()
+
     def connect_trainer(self, trainer):
         # Add observers for all (other) models.
         model_main = self.get_optimizer('main').target
@@ -113,6 +117,8 @@ class ParallelUpdater(standard_updater.StandardUpdater):
         # For reducing memory
         for model in six.itervalues(self._models):
             model.cleargrads()
+
+        cuda.Stream.null.synchronize()
 
         losses = []
         for model_key, model in six.iteritems(self._models):

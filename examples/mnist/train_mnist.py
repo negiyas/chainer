@@ -46,7 +46,13 @@ def main():
                         help='Number of units')
     parser.add_argument('--noplot', dest='plot', action='store_false',
                         help='Disable PlotReport extension')
+    parser.add_argument('--debug', '-d', dest='debug', action='store_true')
+    parser.set_defaults(debug=False)
     args = parser.parse_args()
+
+    if args.debug:
+        import pdb
+        pdb.set_trace()
 
     print('GPU: {}'.format(args.gpu))
     print('# unit: {}'.format(args.unit))

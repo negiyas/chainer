@@ -38,6 +38,8 @@ import six
 import chainer
 from chainer.backends import intel64
 from chainer.configuration import config
+from collections import defaultdict
+from chainer import log
 
 available = False
 cudnn_enabled = False
@@ -134,6 +136,23 @@ class DummyDeviceType(object):
 DummyDevice = DummyDeviceType()
 
 
+class PinnedMemoryDeviceType(DummyDeviceType):
+
+    """Pinned memory device class.
+
+    This class is used to represent pinned memory device.
+
+    """
+
+    id = -2
+
+    def __int__(self):
+        return -2
+
+
+PinnedMemoryDevice = PinnedMemoryDeviceType()
+
+
 # ------------------------------------------------------------------------------
 # Global states
 # ------------------------------------------------------------------------------
@@ -185,6 +204,8 @@ def get_device_from_array(*arrays):
     for array in arrays:
         if isinstance(array, ndarray) and array.device is not None:
             return array.device
+        if isinstance(array, ndarray) and array.is_swapout:
+            return PinnedMemoryDevice
     return DummyDevice
 
 
@@ -229,6 +250,8 @@ def _get_device(*args):
             check_cuda_available()
             return Device(arg)
         if isinstance(arg, ndarray):
+            if arg.is_swapout is True:
+                return PinnedMemoryDevice
             if arg.device is None:
                 continue
             return arg.device
@@ -303,6 +326,10 @@ def _array_to_gpu(array, device, stream):
     array_dev = get_device_from_array(array)
     if array_dev.id == cupy.cuda.device.get_device_id():
         return array
+
+    if array_dev.id == -2:
+        # pinned memory to GPU
+        return __swapin(array, stream=stream)
 
     if stream is not None and stream.ptr != 0:
         ret = cupy.empty_like(array)
@@ -386,6 +413,64 @@ def _array_to_cpu(array, stream):
             'The array sent to cpu must be numpy.ndarray or cupy.ndarray, '
             'or a NumPy scalar.'
             '\nActual type: {0}.'.format(type(array)))
+
+
+def to_swap(array, stream=None):
+    """Copies the give array to pinned memory
+
+    Args:
+        array: Array to be sent to pinned memory.
+        stream (cupy.cuda.Stream): CUDA stream.
+
+    Returns:
+        cupy.ndarray: Array on pinned memory.
+    """
+    if isinstance(array, cupy.ndarray):
+        array_dev = get_device(array)
+        if array_dev.id == -2:
+            # data is on HOST pinned memory
+            return array
+        # data is on GPU device memory
+        a_pinn = __swapout(array, stream=stream)
+        return a_pinn
+    elif isinstance(array, numpy.ndarray):
+        # data is on HOST memory
+        array.to_gpu(stream=stream)
+        a_pinn = __swapout(array, stream=stream)
+        return a_pinn
+    else:
+        raise TypeError(
+            'The array sent to cpu must be numpy.ndarray or cupy.ndarray.'
+            '\nActual type: {0}.'.format(type(array)))
+
+
+def __swapout(array, stream=None):
+    """Swap-out array on GPU memory to HOST pinned memory
+
+    Args:
+        array(cupy.ndarray): src array
+    """
+    src = array.data
+    array.swapout(stream=stream)
+    if stream is not None:
+        # Holds a reference to src data for safe async copy
+        stream.add_callback(lambda *x: None, (src))
+    return array
+
+
+def __swapin(array, device=None, stream=None):
+    """Swap-in array on HOST pinned memory to GPU memory
+
+    Args:
+        array(cupy.ndarray): src array
+    """
+    with get_device(device):
+        src = array.data_swapout
+        array.swapin(stream=stream)
+        if stream is not None:
+            # Holds a reference to src data for safe async copy
+            stream.add_callback(lambda *x: None, (src))
+        return array
 
 
 def copy(array, out=None, out_device=None, stream=None):

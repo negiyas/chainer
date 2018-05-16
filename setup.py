@@ -30,6 +30,8 @@ requirements = {
         'numpy>=1.9.0',
         'protobuf>=3.0.0',
         'six>=1.9.0',
+        'nvidia-ml-py',
+        'py3nvml',
     ],
     'cuda': [
         cupy_requirement('cupy'),

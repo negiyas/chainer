@@ -92,6 +92,10 @@ class StandardUpdater(_updater.Updater):
     def is_new_epoch(self):
         return self._iterators['main'].is_new_epoch
 
+    @property
+    def device_list(self):
+        return [self.device] if self.device >= 0 else []
+
     def finalize(self):
         """Finalizes the updater object.
 

@@ -10,6 +10,8 @@ import chainer.functions
 from chainer.utils import argument
 from chainer.utils import conv
 from chainer.utils import type_check
+import cupy
+from cupy.cuda import cudnn_util
 
 if cuda.cudnn_enabled:
     _cudnn_version = cuda.cuda.cudnn.getVersion()
@@ -25,7 +27,8 @@ class Convolution2DFunction(function_node.FunctionNode):
 
     _use_ideep = False
 
-    def __init__(self, stride=1, pad=0, cover_all=False, **kwargs):
+    def __init__(self, stride=1, pad=0, cover_all=False, cudnn_algo=None, **kwargs):
+
         argument.check_unexpected_kwargs(
             kwargs,
             deterministic="deterministic argument is not supported anymore. "
@@ -44,6 +47,12 @@ class Convolution2DFunction(function_node.FunctionNode):
         self.cover_all = cover_all
         self.dy, self.dx = _pair(dilate)
         self.groups = groups
+        #print('FUNCTION: config.autoworkspace={}'.format(configuration.config.autoworkspace));
+        if configuration.config.autoworkspace:
+            self.cudnn_algo = cudnn_util.GetAlgo() if cudnn_algo is None else cudnn_algo
+        else:
+            self.cudnn_algo = None
+                                 
 
     def check_type_forward(self, in_types):
         n_in = in_types.size()
@@ -222,10 +231,12 @@ class Convolution2DFunction(function_node.FunctionNode):
         stride = (self.sy, self.sx)
         dilation = (self.dy, self.dx)
         auto_tune = configuration.config.autotune
+        auto_workspace = configuration.config.autoworkspace
         tensor_core = configuration.config.use_cudnn_tensor_core
         cuda.cudnn.convolution_forward(
             x, W, b, y, pad, stride, dilation, self.groups,
-            auto_tune=auto_tune, tensor_core=tensor_core)
+            auto_tune=auto_tune, auto_workspace=auto_workspace,
+            tensor_core=tensor_core, cudnn_algo=self.cudnn_algo)
         return y,
 
     def backward(self, indexes, grad_outputs):
@@ -238,10 +249,10 @@ class Convolution2DFunction(function_node.FunctionNode):
             gx = chainer.functions.deconvolution_2d(
                 gy, W, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
                 outsize=(xh, xw), dilate=(self.dy, self.dx),
-                groups=self.groups)
+                groups=self.groups, cudnn_algo=self.cudnn_algo)
             ret.append(gx)
         if 1 in indexes:
-            gW, = Convolution2DGradW(self).apply((x, gy))
+            gW, = Convolution2DGradW(self, cudnn_algo=self.cudnn_algo).apply((x, gy))
             ret.append(gW)
         if 2 in indexes:
             gb = chainer.functions.sum(gy, axis=(0, 2, 3))
@@ -252,7 +263,7 @@ class Convolution2DFunction(function_node.FunctionNode):
 
 class Convolution2DGradW(function_node.FunctionNode):
 
-    def __init__(self, conv2d):
+    def __init__(self, conv2d, cudnn_algo=None):
         W_node = conv2d.inputs[1]
         self.kh, self.kw = W_node.shape[2:]
         self.sy = conv2d.sy
@@ -265,6 +276,7 @@ class Convolution2DGradW(function_node.FunctionNode):
         self.W_dtype = W_node.dtype
         self.groups = conv2d.groups
         self._use_ideep = conv2d._use_ideep
+        self.cudnn_algo = cudnn_algo
         assert self.groups == 1 or not self._use_ideep
 
     def forward_cpu(self, inputs):
@@ -397,11 +409,13 @@ class Convolution2DGradW(function_node.FunctionNode):
         dilation = (self.dy, self.dx)
         deterministic = configuration.config.cudnn_deterministic
         auto_tune = configuration.config.autotune
+        auto_workspace = configuration.config.autoworkspace
         tensor_core = configuration.config.use_cudnn_tensor_core
         cuda.cudnn.convolution_backward_filter(
             x, gy, gW, pad, stride, dilation, self.groups,
             deterministic=deterministic, auto_tune=auto_tune,
-            tensor_core=tensor_core)
+            auto_workspace=auto_workspace, tensor_core=tensor_core,
+            cudnn_algo=self.cudnn_algo)
 
         return gW,
 
@@ -415,7 +429,7 @@ class Convolution2DGradW(function_node.FunctionNode):
             gx = chainer.functions.deconvolution_2d(
                 gy, ggW, stride=(self.sy, self.sx), pad=(self.ph, self.pw),
                 outsize=(xh, xw), dilate=(self.dy, self.dx),
-                groups=self.groups)
+                groups=self.groups, cudnn_algo=self.cudnn_algo)
             ret.append(gx)
         if 1 in indexes:
             ggy = convolution_2d(
@@ -427,7 +441,7 @@ class Convolution2DGradW(function_node.FunctionNode):
         return ret
 
 
-def convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, **kwargs):
+def convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, cudnn_algo=None, **kwargs):
     """convolution_2d(x, W, b=None, stride=1, pad=0, cover_all=False, *, dilate=1, groups=1)
 
     Two-dimensional convolution function.
@@ -569,7 +583,7 @@ cover_all=True)
                                            ('dilate', 1), ('groups', 1))
 
     fnode = Convolution2DFunction(stride, pad, cover_all, dilate=dilate,
-                                  groups=groups)
+                                  groups=groups, cudnn_algo=cudnn_algo)
     if b is None:
         args = x, W
     else:

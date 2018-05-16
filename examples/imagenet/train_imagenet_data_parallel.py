@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Example code of learning a large scale convnet from LSVRC2012 dataset
+"""Example code of learning a large scale convnet from ILSVRC2012 dataset
 with multiple GPUs using data parallelism.
 
 Prerequisite: To run this example, crop the center of ILSVRC2012 training and
@@ -27,7 +27,27 @@ import googlenet
 import googlenetbn
 import nin
 import resnet50
+import vgg16
 import train_imagenet
+
+
+class SyntheticDataset(chainer.dataset.DatasetMixin):
+
+    def __init__(self, dim=3, insize=224, length=1024):
+        self.dim = dim
+        self.insize = insize
+        self.length = length
+
+    def __len__(self):
+        return self.length
+
+    def get_example(self, i):
+        # It generates the i-th image/label pair and return the pair
+        image = np.ndarray((self.dim, self.insize, self.insize), dtype=np.float32)
+        image.fill(0.5)
+        label = np.array(1, dtype=np.int32)
+        # label.fill(1)
+        return image, label
 
 
 def main():
@@ -40,6 +60,7 @@ def main():
         'nin': nin.NIN,
         'resnet50': resnet50.ResNet50,
         'resnext50': resnet50.ResNeXt50,
+        'vgg16': vgg16.VGG16,
     }
 
     parser = argparse.ArgumentParser(
@@ -48,10 +69,14 @@ def main():
     parser.add_argument('val', help='Path to validation image-label list file')
     parser.add_argument('--arch', '-a', choices=archs.keys(),
                         default='nin', help='Convnet architecture')
+    parser.add_argument('--insize', '-is', default=224, type=int,
+                        help='The size of input images')
     parser.add_argument('--batchsize', '-B', type=int, default=32,
                         help='Learning minibatch size')
-    parser.add_argument('--epoch', '-E', type=int, default=10,
+    parser.add_argument('--epoch', '-E', type=int, default=1,
                         help='Number of epochs to train')
+    parser.add_argument('--iteration', '-i', type=int, default=0,
+                        help='Number of iterations to train')
     parser.add_argument('--gpus', '-g', type=int, nargs="*",
                         default=[0, 1, 2, 3])
     parser.add_argument('--initmodel',
@@ -66,24 +91,52 @@ def main():
                         help='Output directory')
     parser.add_argument('--root', '-R', default='.',
                         help='Root directory path of image files')
+    parser.add_argument('--synthetic', '-s', action='store_true', default=False,
+                    help='User cynthetic images')
+    parser.set_defaults(synthetic=False)
     parser.add_argument('--val_batchsize', '-b', type=int, default=250,
                         help='Validation minibatch size')
+    parser.add_argument('--ooc',
+                        action='store_true', default=False,
+                        help='Functions of out-of-core')
+    parser.add_argument('--lwr',
+                        action='store_true', default=False,
+                        help='Functions of layer-wised reduction')
     parser.add_argument('--test', action='store_true')
     parser.set_defaults(test=False)
+    parser.add_argument('--debug', '-d', dest='debug', action='store_true')
+    parser.set_defaults(debug=False)
     args = parser.parse_args()
 
+    if args.debug:
+        import pdb
+        pdb.set_trace()
+
+    # Check cudnn version
+    import cupy
+    if chainer.cuda.cudnn_enabled:
+        cudnn_v = cupy.cuda.cudnn.getVersion()
+        print('cuDNN Version:', cudnn_v)
+
     # Initialize the model to train
-    model = archs[args.arch]()
+    if args.arch == "googlenet" or args.arch == "resnet50":
+        model = archs[args.arch](insize=args.insize)
+    else:
+        model = archs[args.arch]()
     if args.initmodel:
         print('Load model from', args.initmodel)
         chainer.serializers.load_npz(args.initmodel, model)
 
     # Load the datasets and mean file
     mean = np.load(args.mean)
-    train = train_imagenet.PreprocessedDataset(
-        args.train, args.root, mean, model.insize)
-    val = train_imagenet.PreprocessedDataset(
-        args.val, args.root, mean, model.insize, False)
+    if args.synthetic:
+        train = SyntheticDataset(insize=model.insize)
+        val = SyntheticDataset(insize=model.insize)
+    else:
+        train = train_imagenet.PreprocessedDataset(
+            args.train, args.root, mean, model.insize)
+        val = train_imagenet.PreprocessedDataset(
+            args.val, args.root, mean, model.insize, False)
     # These iterators load the images with subprocesses running in parallel to
     # the training/validation.
     devices = tuple(args.gpus)
@@ -101,16 +154,26 @@ def main():
     optimizer.setup(model)
 
     # Set up a trainer
-    updater = updaters.MultiprocessParallelUpdater(train_iters, optimizer,
-                                                   devices=devices)
-    trainer = training.Trainer(updater, (args.epoch, 'epoch'), args.out)
+    if args.lwr != 0:
+        updater = updaters.LWRParallelUpdater(train_iters, optimizer,
+                                              devices=devices)
+    else:
+        updater = updaters.MultiprocessParallelUpdater(train_iters, optimizer,
+                                                       devices=devices)
+    if args.iteration > 0:
+        trainer = training.Trainer(updater, (args.iteration, 'iteration'),
+                                   args.out)
+    else:
+        trainer = training.Trainer(updater, (args.epoch, 'epoch'), args.out)
 
     if args.test:
         val_interval = 5, 'epoch'
         log_interval = 1, 'epoch'
     else:
-        val_interval = 100000, 'iteration'
-        log_interval = 1000, 'iteration'
+        val_interval = 1000, 'iteration'
+        log_interval = 100, 'iteration'
+        # val_interval = 1, 'epoch'
+        # log_interval = 1000, 'iteration'
 
     trainer.extend(extensions.Evaluator(val_iter, model, device=args.gpus[0]),
                    trigger=val_interval)
@@ -126,12 +189,20 @@ def main():
         'epoch', 'iteration', 'main/loss', 'validation/main/loss',
         'main/accuracy', 'validation/main/accuracy', 'lr'
     ]), trigger=log_interval)
-    trainer.extend(extensions.ProgressBar(update_interval=2))
+    trainer.extend(extensions.ProgressBar(update_interval=100))
+    # trainer.extend(extensions.ProgressBar(update_interval=2))
 
     if args.resume:
         chainer.serializers.load_npz(args.resume, trainer)
 
-    trainer.run()
+    if args.ooc:
+        # with chainer.out_of_core_mode(
+        #        fine_granularity=True, devices=devices):
+        with chainer.out_of_core_mode(
+                fine_granularity=True, async=False, devices=devices):
+            trainer.run()
+    else:
+        trainer.run()
 
 
 if __name__ == '__main__':

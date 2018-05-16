@@ -17,12 +17,32 @@ import numpy as np
 import chainer
 from chainer import training
 from chainer.training import extensions
+from chainer.training import triggers
 
 import alex
 import googlenet
 import googlenetbn
 import nin
 import resnet50
+import vgg16
+
+class SyntheticDataset(chainer.dataset.DatasetMixin):
+
+    def __init__(self, dim=3, insize=224, length=1024):
+        self.dim = dim
+        self.insize = insize
+        self.length = length
+
+    def __len__(self):
+        return self.length
+
+    def get_example(self, i):
+        # It generates the i-th image/label pair and return the pair
+        image = np.ndarray((self.dim, self.insize, self.insize), dtype=np.float32)
+        image.fill(0.5)
+        label = np.array(1, dtype=np.int32)
+        # label.fill(1)
+        return image, label
 
 
 class PreprocessedDataset(chainer.dataset.DatasetMixin):
@@ -61,7 +81,7 @@ class PreprocessedDataset(chainer.dataset.DatasetMixin):
         right = left + crop_size
 
         image = image[:, top:bottom, left:right]
-        image -= self.mean[:, top:bottom, left:right]
+        #image -= self.mean[:, top:bottom, left:right]
         image *= (1.0 / 255.0)  # Scale to [0, 1]
         return image, label
 
@@ -76,6 +96,7 @@ def main():
         'nin': nin.NIN,
         'resnet50': resnet50.ResNet50,
         'resnext50': resnet50.ResNeXt50,
+        'vgg16': vgg16.VGG16,
     }
 
     parser = argparse.ArgumentParser(
@@ -86,8 +107,10 @@ def main():
                         help='Convnet architecture')
     parser.add_argument('--batchsize', '-B', type=int, default=32,
                         help='Learning minibatch size')
-    parser.add_argument('--epoch', '-E', type=int, default=10,
-                        help='Number of epochs to train')
+    parser.add_argument('--epoch', '-E', type=int, default=0,
+                        help='Number of epochis to train')
+    parser.add_argument('--iteration', '-I', type=int, default=1000,
+                        help='Number of iterations to train')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU ID (negative value indicates CPU')
     parser.add_argument('--initmodel',
@@ -96,17 +119,41 @@ def main():
                         help='Number of parallel data loading processes')
     parser.add_argument('--mean', '-m', default='mean.npy',
                         help='Mean file (computed by compute_mean.py)')
+    parser.add_argument('--synthetic', '-s', action='store_true', default=False,
+                    help='Use synthetic images. train/val arguments are ignored')
     parser.add_argument('--resume', '-r', default='',
                         help='Initialize the trainer from given file')
     parser.add_argument('--out', '-o', default='result',
                         help='Output directory')
     parser.add_argument('--root', '-R', default='.',
                         help='Root directory path of image files')
-    parser.add_argument('--val_batchsize', '-b', type=int, default=250,
+    parser.add_argument('--val_batchsize', '-b', type=int, default=50,
                         help='Validation minibatch size')
+    parser.add_argument('--ooc',
+                        action='store_true', default=False,
+                        help='Functions of out-of-core')
+    parser.add_argument('--auto',
+                        action='store_true', default=False,
+                        help='Functions of auto memory tuning')
+    parser.add_argument('--autows',
+                        action='store_true', default=False,
+                        help='Functions of auto workspace tuning')
+    parser.add_argument('--debug', '-d', dest='debug', action='store_true',
+                        default=False, help='start debugger')
+    parser.add_argument('--log', '-l', dest='log', action='store_true',
+                        default=False, help='enable log')
     parser.add_argument('--test', action='store_true')
     parser.set_defaults(test=False)
     args = parser.parse_args()
+    if args.debug:
+        import pdb
+        pdb.set_trace()
+    if args.log:
+        from chainer import log
+        log.enable()
+    if args.gpu >= 0:
+        chainer.backends.cuda.get_device_from_id(
+            args.gpu).use()  # Make the GPU current
 
     # Initialize the model to train
     model = archs[args.arch]()
@@ -114,14 +161,16 @@ def main():
         print('Load model from', args.initmodel)
         chainer.serializers.load_npz(args.initmodel, model)
     if args.gpu >= 0:
-        chainer.backends.cuda.get_device_from_id(
-            args.gpu).use()  # Make the GPU current
         model.to_gpu()
 
     # Load the datasets and mean file
     mean = np.load(args.mean)
-    train = PreprocessedDataset(args.train, args.root, mean, model.insize)
-    val = PreprocessedDataset(args.val, args.root, mean, model.insize, False)
+    if args.synthetic:
+        train = SyntheticDataset(insize=model.insize)
+        val = SyntheticDataset(insize=model.insize)
+    else:
+        train = PreprocessedDataset(args.train, args.root, mean, model.insize)
+        val = PreprocessedDataset(args.val, args.root, mean, model.insize, False)
     # These iterators load the images with subprocesses running in parallel to
     # the training/validation.
     train_iter = chainer.iterators.MultiprocessIterator(
@@ -136,10 +185,15 @@ def main():
     # Set up a trainer
     updater = training.updaters.StandardUpdater(
         train_iter, optimizer, device=args.gpu)
-    trainer = training.Trainer(updater, (args.epoch, 'epoch'), args.out)
+    if args.epoch == 0:
+        trainer = training.Trainer(updater, (args.iteration, 'iteration'), args.out)
+        val_interval = (1 if args.test else 100000), 'iteration'
+        log_interval = (1 if args.test else 1000), 'iteration'
+    else:
+        trainer = training.Trainer(updater, (args.epoch, 'epoch'), args.out)
+        val_interval = (1 if args.test else 1), 'epoch'
+        log_interval = (1 if args.test else 1), 'epoch'
 
-    val_interval = (1 if args.test else 100000), 'iteration'
-    log_interval = (1 if args.test else 1000), 'iteration'
 
     trainer.extend(extensions.Evaluator(val_iter, model, device=args.gpu),
                    trigger=val_interval)
@@ -153,14 +207,30 @@ def main():
     trainer.extend(extensions.observe_lr(), trigger=log_interval)
     trainer.extend(extensions.PrintReport([
         'epoch', 'iteration', 'main/loss', 'validation/main/loss',
-        'main/accuracy', 'validation/main/accuracy', 'lr'
+        'main/accuracy', 'validation/main/accuracy', 'lr', 'elapsed_time'
     ]), trigger=log_interval)
     trainer.extend(extensions.ProgressBar(update_interval=10))
 
     if args.resume:
         chainer.serializers.load_npz(args.resume, trainer)
 
-    trainer.run()
+    if args.ooc:
+        with chainer.out_of_core_mode(fine_granularity=True):
+            trainer.run()
+    elif args.auto:
+        with chainer.using_config('autotune', True):
+            trainer.run()
+    elif args.autows:
+        trainer.extend(extensions.WorkspaceAllocator([args.gpu]),
+                       trigger=triggers.IntervalTrigger(1, 'iteration'))
+        trainer.extend(extensions.WorkspaceEvaluator(val_iter, model,
+                                                     device=args.gpu),
+                       trigger=val_interval)
+        with chainer.using_config('autoworkspace', True):
+            trainer.run()
+    else:
+        trainer.run()
+
 
 
 if __name__ == '__main__':

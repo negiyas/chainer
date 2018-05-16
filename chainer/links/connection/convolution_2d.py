@@ -3,6 +3,9 @@ from chainer import initializers
 from chainer import link
 from chainer.utils import argument
 from chainer import variable
+from chainer import configuration
+import cupy
+from cupy.cuda import cudnn_util
 
 
 class Convolution2D(link.Link):
@@ -128,7 +131,9 @@ class Convolution2D(link.Link):
         self.dilate = _pair(dilate)
         self.out_channels = out_channels
         self.groups = int(groups)
-
+        #print('LINK config.autoworkspace={}'.format(configuration.config.autoworkspace));
+        #print('call cudnn_util.FindAlgo()');
+        self.cudnn_algo = cudnn_util.FindAlgo()
         with self.init_scope():
             W_initializer = initializers._get_initializer(initialW)
             self.W = variable.Parameter(W_initializer)
@@ -142,6 +147,10 @@ class Convolution2D(link.Link):
                     initial_bias = 0
                 bias_initializer = initializers._get_initializer(initial_bias)
                 self.b = variable.Parameter(bias_initializer, out_channels)
+
+    def to_gpu(self, device=None):
+        super(Convolution2D, self).to_gpu(device)
+        self.cudnn_algo.device = self._device_id
 
     def _initialize_params(self, in_channels):
         kh, kw = _pair(self.ksize)
@@ -168,7 +177,7 @@ class Convolution2D(link.Link):
             self._initialize_params(x.shape[1])
         return convolution_2d.convolution_2d(
             x, self.W, self.b, self.stride, self.pad, dilate=self.dilate,
-            groups=self.groups)
+            groups=self.groups, cudnn_algo=self.cudnn_algo)
 
 
 def _pair(x):
