@@ -21,6 +21,7 @@ import chainer
 from chainer import training
 from chainer.training import extensions
 from chainer.training import updaters
+import cupy
 
 import alex
 import googlenet

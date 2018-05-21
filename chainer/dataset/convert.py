@@ -6,7 +6,7 @@ import six
 from chainer.backends import cuda
 
 
-def to_device(device, x, stream=cuda.Stream.null):
+def to_device(device, x, stream=None):
     """Send an array to a given device.
 
     This method sends a given array to a given device. This method is used in
@@ -37,7 +37,7 @@ def to_device(device, x, stream=cuda.Stream.null):
         return cuda.to_gpu(x, device, stream)
 
 
-def concat_examples(batch, device=None, padding=None, stream=cuda.Stream.null):
+def concat_examples(batch, device=None, padding=None, stream=None):
     """Concatenates a list of examples into array(s).
 
     This function converts an "array of tuples" into a "tuple of arrays".
