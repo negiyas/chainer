@@ -49,7 +49,7 @@ class Convolution2DFunction(function_node.FunctionNode):
         self.groups = groups
         #print('FUNCTION: config.autoworkspace={}'.format(configuration.config.autoworkspace));
         if configuration.config.autoworkspace:
-            self.cudnn_algo = cudnn_util.GetAlgo() if cudnn_algo is None else cudnn_algo
+            self.cudnn_algo = cudnn_util.FindAlgo() if cudnn_algo is None else cudnn_algo
         else:
             self.cudnn_algo = None
                                  
