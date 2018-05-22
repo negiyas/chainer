@@ -131,9 +131,6 @@ class Convolution2D(link.Link):
         self.dilate = _pair(dilate)
         self.out_channels = out_channels
         self.groups = int(groups)
-        #print('LINK config.autoworkspace={}'.format(configuration.config.autoworkspace));
-        #print('call cudnn_util.FindAlgo()');
-        self.cudnn_algo = cudnn_util.FindAlgo()
         with self.init_scope():
             W_initializer = initializers._get_initializer(initialW)
             self.W = variable.Parameter(W_initializer)
@@ -150,7 +147,6 @@ class Convolution2D(link.Link):
 
     def to_gpu(self, device=None):
         super(Convolution2D, self).to_gpu(device)
-        self.cudnn_algo.device = self._device_id
 
     def _initialize_params(self, in_channels):
         kh, kw = _pair(self.ksize)
@@ -177,7 +173,7 @@ class Convolution2D(link.Link):
             self._initialize_params(x.shape[1])
         return convolution_2d.convolution_2d(
             x, self.W, self.b, self.stride, self.pad, dilate=self.dilate,
-            groups=self.groups, cudnn_algo=self.cudnn_algo)
+            groups=self.groups)
 
 
 def _pair(x):

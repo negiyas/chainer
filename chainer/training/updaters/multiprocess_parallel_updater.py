@@ -2,22 +2,28 @@ import multiprocessing
 import warnings
 
 import six
+import sys
 
 from chainer.backends import cuda
 from chainer.dataset import convert
 from chainer import reporter
 from chainer.training.updaters import standard_updater
 
+if sys.version_info < (3, 0, 0):
+    import pynvml as pynvml
+else:
+    import py3nvml.py3nvml as pynvml
 
 try:
     from cupy.cuda import nccl
+    from cupy.cuda import profiler
     _available = True
 except ImportError:
     _available = False
 
 import numpy
-import traceback
-import cupy
+
+from chainer import configuration
 
 class _Worker(multiprocessing.Process):
 
@@ -28,27 +34,43 @@ class _Worker(multiprocessing.Process):
         self.converter = master.converter
         self.model = master._master
         self.device = master._devices[proc_id]
-        print("_Worker.__init__ poci_id={}, device={}".format(self.proc_id, self.device))
-        #traceback.print_stack()
         self.iterator = master._mpu_iterators[proc_id]
         self.n_devices = len(master._devices)
 
     def setup(self):
+        # Set affinity
+        pynvml.nvmlInit()
+        handle = pynvml.nvmlDeviceGetHandleByIndex(cuda.Device(self.device).id)
+        pynvml.nvmlDeviceSetCpuAffinity(handle)
+
         _, comm_id = self.pipe.recv()
         self.comm = nccl.NcclCommunicator(self.n_devices, comm_id,
                                           self.proc_id)
 
-        print("_Worker.setup poci_id={}, device={}".format(self.proc_id, self.device))
-        #traceback.print_stack()
         self.model.to_gpu(self.device)
         self.reporter = reporter.Reporter()
         self.reporter.add_observer('main', self.model)
         self.reporter.add_observers('main',
                                     self.model.namedlinks(skipself=True))
 
+        ooc_enabled, ooc_async, fine_granularity, streams, events, ooc_debug \
+            = getattr(configuration.config, 'out_of_core_params',
+                      [False, True, False, [None, None], [], False])
+        if ooc_enabled:
+            if ooc_async:
+                streams.append(cuda.Stream(non_blocking=True))
+                streams.append(cuda.Stream(non_blocking=True))
+            else:
+                streams.append(cuda.Stream.null)
+                streams.append(cuda.Stream.null)
+            if ooc_debug:
+                print("setup(): dev_id=" + str(cuda.Device(self.device).id))
+            configuration.using_config('out_of_core_params',
+                                       [ooc_enabled, ooc_async,
+                                        fine_granularity, streams,
+                                        events, ooc_debug])
+
     def run(self):
-        print("_Worker.run poci_id={}, device={}".format(self.proc_id, self.device))
-        #traceback.print_stack()
         dev = cuda.Device(self.device)
         dev.use()
         self.setup()
@@ -86,6 +108,9 @@ class _Worker(multiprocessing.Process):
                                 null_stream.ptr)
                 scatter_params(self.model, gp)
                 gp = None
+
+        profiler.stop()
+        pynvml.nvmlShutdown()
 
 
 class MultiprocessParallelUpdater(standard_updater.StandardUpdater):
@@ -125,7 +150,6 @@ class MultiprocessParallelUpdater(standard_updater.StandardUpdater):
 
     def __init__(self, iterators, optimizer, converter=convert.concat_examples,
                  devices=None):
-        print("MultiprocessParallelUpdater:__init__: devices={}".format(devices))
         if not MultiprocessParallelUpdater.available():
             raise Exception(
                 'NCCL is not enabled. MultiprocessParallelUpdater '
@@ -186,9 +210,6 @@ class MultiprocessParallelUpdater(standard_updater.StandardUpdater):
             pipe.send(message)
 
     def setup_workers(self):
-        print("MultiprocessParallelUpdater:setup_workers: devices={}".format(self._devices))
-        import pdb
-        pdb.set_trace()
         if self._initialized:
             return
         self._initialized = True
@@ -202,6 +223,31 @@ class MultiprocessParallelUpdater(standard_updater.StandardUpdater):
             self._pipes.append(pipe)
 
         with cuda.Device(self._devices[0]):
+            # Set affinity
+            pynvml.nvmlInit()
+            handle = pynvml.nvmlDeviceGetHandleByIndex(
+                cuda.Device(self.device).id)
+            pynvml.nvmlDeviceSetCpuAffinity(handle)
+
+            ooc_enabled, ooc_async, fine_granularity, streams, events, ooc_debug \
+                = getattr(
+                    configuration.config, 'out_of_core_params',
+                    [False, True, False, [None, None], [], False])
+            if ooc_enabled:
+                if ooc_async:
+                    streams.append(cuda.Stream(non_blocking=True))
+                    streams.append(cuda.Stream(non_blocking=True))
+                else:
+                    streams.append(cuda.Stream.null)
+                    streams.append(cuda.Stream.null)
+                if ooc_debug:
+                    print("setup_workers(): dev_id="
+                          + str(cuda.Device(self.device).id))
+                configuration.using_config('out_of_core_params',
+                                           [ooc_enabled, ooc_async,
+                                            fine_granularity, streams,
+                                            events, ooc_debug])
+
             self._master.to_gpu(self._devices[0])
             if len(self._devices) > 1:
                 comm_id = nccl.get_unique_id()
@@ -248,6 +294,9 @@ class MultiprocessParallelUpdater(standard_updater.StandardUpdater):
 
         for worker in self._workers:
             worker.join()
+
+        profiler.stop()
+        pynvml.nvmlShutdown()
 
 
 def _calc_loss(model, in_arrays):
