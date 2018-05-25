@@ -21,7 +21,7 @@ set CHAINER_PYTHON_350_FORCE environment variable to 1."""
 
 
 def cupy_requirement(pkg):
-    return '{}==4.0.0'.format(pkg)
+    return '{}==4.0.0a1'.format(pkg)
 
 
 requirements = {
@@ -31,10 +31,11 @@ requirements = {
         'protobuf>=3.0.0',
         'six>=1.9.0',
         'nvidia-ml-py',
+        'numexpr',
         'py3nvml',
     ],
     'cuda': [
-        cupy_requirement('cupy'),
+        cupy_requirement('cupy-ibmopt'),
     ],
     'stylecheck': [
         'autopep8',
@@ -108,10 +109,7 @@ def find_any_distribution(pkgs):
 # Currently cupy provides source package (cupy) and binary wheel packages
 # (cupy-cudaXX). Chainer can use any one of these packages.
 cupy_pkg = find_any_distribution([
-    'cupy-cuda91',
-    'cupy-cuda90',
-    'cupy-cuda80',
-    'cupy',
+    'cupy-ibmopt',
 ])
 if cupy_pkg is not None:
     req = cupy_requirement(cupy_pkg.project_name)
@@ -126,7 +124,7 @@ __version__ = imp.load_source(
 
 
 setup(
-    name='chainer',
+    name='chainer-ibmopt',
     version=__version__,
     description='A flexible framework of neural networks',
     author='Seiya Tokui',

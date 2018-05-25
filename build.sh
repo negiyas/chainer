@@ -6,4 +6,4 @@ export LDFLAGS="-L$NCCL_ROOT/lib"
 export LIBRARY_PATH="$NCCL_ROOT/lib:$LIBRARY_PATH"
 
 python setup.py install 2>&1 | tee -a build.log
-pip install -e . 2>&1 | tee -a build.log
+#pip install -e . 2>&1 | tee -a build.log
