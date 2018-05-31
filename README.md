@@ -1,6 +1,6 @@
 <div align="center"><img src="docs/image/chainer_red_h.png" width="400"/></div>
 
-# Chainer: A deep learning framework (Optimized for POWER machines by IBM)
+# Chainer: A deep learning framework<br> (Optimized for POWER machines by IBM)
 
 [![pypi](https://img.shields.io/pypi/v/chainer.svg)](https://pypi.python.org/pypi/chainer)
 [![GitHub license](https://img.shields.io/github/license/chainer/chainer.svg)](https://github.com/chainer/chainer)
@@ -33,11 +33,11 @@ Allocate larger workspace memory by managing and estimating the GPU memory, and 
 - Out-of-Core<br>
 Introduce swap-in/swap-out mechanism to support network models those cannot fit into phisical GPU memory.
 
-To run example sh scripts to use these optimizations.
+To run examples using these optimizations, use sh scripts.
 
 ``
-$ cd examples/imagenet
-$ ./bench-AUTOWS.sh
+$ cd examples/imagenet <br>
+$ ./bench-AUTOWS.sh <br>
 $ ./bench-OOC.sh
 ``
 
