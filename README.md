@@ -36,8 +36,12 @@ Introduce swap-in/swap-out mechanism to support network models those cannot fit 
 To run examples using these optimizations, use sh scripts.
 
 ``
-$ cd examples/imagenet <br>
-$ ./bench-AUTOWS.sh <br>
+$ cd examples/imagenet
+``
+``
+$ ./bench-AUTOWS.sh
+``
+``
 $ ./bench-OOC.sh
 ``
 
