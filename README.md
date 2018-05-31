@@ -1,6 +1,6 @@
 <div align="center"><img src="docs/image/chainer_red_h.png" width="400"/></div>
 
-# Chainer: A deep learning framework
+# Chainer: A deep learning framework (Optimized for POWER machines by IBM)
 
 [![pypi](https://img.shields.io/pypi/v/chainer.svg)](https://pypi.python.org/pypi/chainer)
 [![GitHub license](https://img.shields.io/github/license/chainer/chainer.svg)](https://github.com/chainer/chainer)
@@ -24,6 +24,23 @@ It provides automatic differentiation APIs based on the **define-by-run** approa
 It also supports CUDA/cuDNN using [CuPy](https://github.com/cupy/cupy) for high performance training and inference.
 For more details of Chainer, see the documents and resources listed above and join the community in Forum, Slack, and Twitter.
 
+## Optimization for POWER machines
+
+The following optimizations for POWER machines are supported.
+
+- Auto Workspace<br>
+Allocate larger workspace memory by managing and estimating the GPU memory, and choose faster cuDNN algorithms by utilizing the GPU memory.
+- Out-of-Core<br>
+Introduce swap-in/swap-out mechanism to support network models those cannot fit into phisical GPU memory.
+
+To run example sh scripts to use these optimizations.
+
+``
+$ cd examples/imagenet
+$ ./bench-AUTOWS.sh
+$ ./bench-OOC.sh
+``
+
 ## Stable version
 
 The stable version of current Chainer is separated in here: [v4](https://github.com/chainer/chainer/tree/v4).
@@ -33,13 +50,13 @@ The stable version of current Chainer is separated in here: [v4](https://github.
 To install Chainer, use `pip`.
 
 ```sh
-$ pip install chainer
+$ pip install chainer-ibmopt
 ```
 
 To enable CUDA support, [set up CUDA](https://docs.nvidia.com/cuda/index.html#installation-guides) and install [CuPy](https://github.com/cupy/cupy).
 
 ```sh
-$ pip install cupy
+$ pip install cupy-ibmopt
 ```
 
 [See the installation guide for more details.](https://docs.chainer.org/en/stable/install.html).

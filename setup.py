@@ -126,7 +126,7 @@ __version__ = imp.load_source(
 setup(
     name='chainer-ibmopt',
     version=__version__,
-    description='A flexible framework of neural networks',
+    description='A flexible framework of neural networks (opbimized for POWER machines by IBM)',
     author='Seiya Tokui',
     author_email='tokui@preferred.jp',
     url='https://chainer.org/',
