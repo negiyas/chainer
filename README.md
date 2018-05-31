@@ -38,9 +38,11 @@ To run examples using these optimizations, use sh scripts.
 ``
 $ cd examples/imagenet
 ``
+
 ``
 $ ./bench-AUTOWS.sh
 ``
+
 ``
 $ ./bench-OOC.sh
 ``
