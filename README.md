@@ -50,7 +50,7 @@ $ ./bench-OOC.sh
 This version should be used with the corresponding version of optimzied Cupy.
 The source codes of cupy and chainer are available as follows.
 
-Cupy: [https://github.com/negiyas/cupy/tree/v4.0.0a3-ibm](https://github.com/negiyas/cupy/tree/v4.0.0a3-ib) <br>
+Cupy: [https://github.com/negiyas/cupy/tree/v4.0.0a3-ibm](https://github.com/negiyas/cupy/tree/v4.0.0a3-ibm) <br>
 Chainer: [https://github.com/negiyas/chainer/tree/v4.0.0a3-ibm](https://github.com/negiyas/chainer/tree/v4.0.0a3-ibm)
 
 
