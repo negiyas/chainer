@@ -26,7 +26,7 @@ For more details of Chainer, see the documents and resources listed above and jo
 
 ## Optimization for POWER machines
 
-The following optimizations for POWER machines are supported.
+The following optimizations for POWER machines (such as IBM Power Systems S822LC for High Performance Computing or IBM Power System AC922) are supported.
 
 - Auto Workspace<br>
 Allocate larger workspace memory by managing and estimating the GPU memory, and choose faster cuDNN algorithms by utilizing the GPU memory.
@@ -46,6 +46,15 @@ $ ./bench-AUTOWS.sh
 ``
 $ ./bench-OOC.sh
 ``
+
+This version should be used with the corresponding version of optimzied Cupy.
+The source codes of cupy and chainer are available as follows.
+
+``
+https://github.com/negiyas/cupy/tree/v4.0.0a3-ibm`
+https://github.com/negiyas/chainer/tree/v4.0.0a3-ibm`
+``
+
 
 ## Stable version
 
