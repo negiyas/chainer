@@ -151,12 +151,12 @@ def main(args):
         hook.print_report()
     elif args.lms:
         from chainer.function_hooks import LMS
-        if args.ooc == 1:
+        if args.lms == 1:
             hook = LMS(logfile=None)
             with hook:
                 trainer.run()
         elif args.lms == 2:
-            hook = OutOfCore(logfile=sys.stdout)
+            hook = LMS(logfile=sys.stdout)
             with hook:
                 trainer.run()
         else:
@@ -181,4 +181,4 @@ if __name__ == '__main__':
     else:
         from cupy.cuda import memory_hooks
         with memory_hooks.CallStackHook(flush=False, full=True if args.memcallstack > 1 else False):
-main(args)
+            main(args)
