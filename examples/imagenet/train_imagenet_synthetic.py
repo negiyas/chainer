@@ -277,7 +277,7 @@ if __name__ == '__main__':
     args = parse_args()
     if args.usepool == 0:
         import cupy
-        cupy.cuda.memory.set_allocator(cupy.cuda.memory._malloc)
+        cupy.cuda.memory.set_allocator(cupy.cuda.memory._malloc_with_hook)
     if args.memcallstack == 1:
         from cupy.cuda import memory_hooks
         with memory_hooks.CallStackHook(flush=False, full=True if args.memcallstack > 1 else False):
@@ -285,7 +285,6 @@ if __name__ == '__main__':
     elif args.memprint == 1:
         from cupy.cuda import memory_hooks
         with memory_hooks.DebugPrintHook():
-            print("AFOAFO")
             main(args)
     else:
         main(args)

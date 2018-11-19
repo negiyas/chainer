@@ -51,4 +51,4 @@ class VGG16(chainer.Chain):
 
         loss = F.softmax_cross_entropy(h8, t)
         chainer.report({'loss': loss, 'accuracy': F.accuracy(h8, t)}, self)
-    return loss
+        return loss

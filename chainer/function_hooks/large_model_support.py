@@ -55,7 +55,7 @@ class LMS(function_hook.FunctionHook):
         self.excl_functions = excl_functions
         self.numfunc = 0
         self.swapped = []
-        self.using = []
+        # self.using = []
         self.logfile = logfile
 
     def log(self, msg):
@@ -68,7 +68,7 @@ class LMS(function_hook.FunctionHook):
         if self.logfile is not None:
             self.log('FORWARD-PRE: function {} #{} rank={}'
                      .format(function.label, self.numfunc,
-                             function.get_rank()))
+                             function.rank))
         
     def forward_postprocess(self, function, in_data):
         if not chainer.config.train:
@@ -76,7 +76,7 @@ class LMS(function_hook.FunctionHook):
         if self.logfile is not None:
             self.log('FORWARD-POST: function {} #{} rank={}'
                     .format(function.label, self.numfunc,
-                            function.get_rank()))
+                            function.rank))
         if (self.swap_functions and function.label in self.swap_functions) or \
            (function.label not in self.excl_functions):
             if len(self.swapped) < self.maxswap:
@@ -96,7 +96,7 @@ class LMS(function_hook.FunctionHook):
             if self.logfile is not None:
                 self.log('FORWARD LAYER: function {} #{} rank={}'
                          .format(function.label, self.numfunc,
-                                 function.get_rank()))
+                                 function.rank))
 
     def backward_preprocess(self, function, in_data, out_grad):
         if not chainer.config.train:
@@ -104,28 +104,29 @@ class LMS(function_hook.FunctionHook):
         if self.logfile is not None:
             self.log('BACKWARD-PRE: function {} #{} rank={}'
                      .format(function.label, self.numfunc,
-                             function.get_rank()))
-        if (self.swap_functions and function.label in self.swap_functions) or \
-           (function.label not in self.excl_functions):
+                             function.rank))
+        if (self.swap_functions and function.label in self.swap_functions):
+            # or (function.label not in self.excl_functions):
             if self.logfile is not None:
                 self.log('BACKWARD LAYER: function {} #{} rank={}'
                          .format(function.label, self.numfunc,
-                                 function.get_rank()))
+                                 function.rank))
             self.numfunc -= 1
-        #while len(self.swapped) > 0 and \
-        #  (self.numfunc - self.numoverlap) < len(self.swapped):
-        if True:
-            #swap_function, swap_data = self.swapped.pop()
-            swap_function = "XXXXX"
-            swap_data = list(function.get_retained_inputs())
-            outputs = function.get_retained_outputs()
-            #self.log("XXXXX: inputs={}, outputs={}".format(type(swap_data), type(outputs)))
-            swap_data.extend(outputs)
-            #self.log("YYYYY: swap_data={}".format(swap_data))
-            self.using.append((swap_function, swap_data))
-            for v in swap_data:
-                d = v.data
-                self.log("ZZZZ: swap_data=TYPE:{},DATA:{}".format(type(d), d))
+        while len(self.swapped) > 0 and \
+          (self.numfunc - self.numoverlap) < len(self.swapped):
+            swap_function, swap_data = self.swapped.pop()
+            #swap_function, swap_data = self.swapped[len(self.swapped) - 1]
+            #del self.swapped[len(self.swapped) - 1]
+        #if True:
+        #    swap_function swap_data = "XXXXX", \
+        #                              list(function.get_retained_inputs())
+        #    outputs = function.get_retained_outputs()
+        #    if outputs is None:
+        #        self.log("BACKWARD-PRE: END (NO OUTPUTS)")
+        #        return
+        #    swap_data.extend(outputs)
+            # self.using.append((swap_function, swap_data))
+            for d in swap_data:
                 if d is not None and d.is_swapout:
                     if self.logfile is not None:
                         self.log("SWAPIN: {} {} {} {} {}"
@@ -133,16 +134,19 @@ class LMS(function_hook.FunctionHook):
                                          str(d.shape).replace(" ", ""),
                                          d.dtype))
                     d.swapin()
+                    # del d
+            #del swap_function
+            #del swap_data
         self.log("BACKWARD-PRE: END")
 
+    """
     def backward_postprocess(self, function, in_data, out_grad):
-        return
         if not chainer.config.train:
             return
         if self.logfile is not None:
             self.log('BACKWARD-POST: function {} #{} rank={}'
                      .format(function.label, self.numfunc,
-                             function.get_rank()))
+                             function.rank))
         while (len(self.swapped) + len(self.using) > (self.numfunc + 3)):
             using_function, using_data = self.using.pop()
             for d in using_data:
@@ -155,3 +159,4 @@ class LMS(function_hook.FunctionHook):
                                          d.dtype))
                     d.deldata()
                     # del d
+    """
