@@ -139,24 +139,30 @@ class LMS(function_hook.FunctionHook):
             #del swap_data
         self.log("BACKWARD-PRE: END")
 
-    """
     def backward_postprocess(self, function, in_data, out_grad):
+        return
         if not chainer.config.train:
             return
         if self.logfile is not None:
             self.log('BACKWARD-POST: function {} #{} rank={}'
                      .format(function.label, self.numfunc,
                              function.rank))
-        while (len(self.swapped) + len(self.using) > (self.numfunc + 3)):
-            using_function, using_data = self.using.pop()
-            for d in using_data:
+                
+        #while (len(self.swapped) + len(self.using) > (self.numfunc + 3)):
+        #    using_function, using_data = self.using.pop()
+        #    for d in using_data:
+        if (self.swap_functions and function.label in self.swap_functions):
+            # or (function.label not in self.excl_functions):
+            using_function = function.label
+            n = 0
+            for d in in_data:
                 if d is not None:
                     if self.logfile is not None:
-                        self.log("DELETE: {} {} {} {} {}"
-                                 .format(using_function, hex(id(d)),
+                        self.log("DELETE: {}:{} {} {} {} {}"
+                                 .format(using_function, n, hex(id(d)),
                                          d.size * 4,
                                          str(d.shape).replace(" ", ""),
                                          d.dtype))
                     d.deldata()
-                    # del d
-    """
+                    n += 1
+                    break
